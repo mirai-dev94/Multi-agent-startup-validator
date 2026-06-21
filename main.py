@@ -17,6 +17,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types as genai_types
 
@@ -33,6 +34,18 @@ load_dotenv()
 MODEL = "gemini-2.5-flash"
 
 app = FastAPI(title="Startup Idea Validator")
+
+# Allow the static frontend (opened directly from disk as a file:// page, or
+# served from any localhost dev server) to call this API. "*" is fine for a
+# local v1 tool with no auth and no sensitive data; revisit if this is ever
+# deployed publicly.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 _client: genai.Client | None = None
 
 
@@ -72,11 +85,15 @@ async def _call_agent(system_prompt: str, user_content: str) -> dict:
         contents=user_content,
         config=genai_types.GenerateContentConfig(
             system_instruction=system_prompt,
-            max_output_tokens=1000,
+            max_output_tokens=2048,
         ),
     )
     raw_text = response.text
-    return _parse_json_response(raw_text)
+    try:
+        return _parse_json_response(raw_text)
+    except json.JSONDecodeError:
+        print(f"--- RAW AGENT RESPONSE (failed to parse) ---\n{raw_text}\n--- END ---")
+        raise
 
 
 async def evaluate_idea(idea: str) -> ValidationResult:

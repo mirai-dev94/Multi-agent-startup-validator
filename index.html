@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Startup Idea Validator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1a1d23;
+    --bg-card: #21252c;
+    --bg-card-hover: #262b33;
+    --border: #353b45;
+    --text: #e8e6e1;
+    --text-dim: #9a9fa8;
+    --skeptic: #5b9dd9;
+    --technical: #d9a05b;
+    --advocate: #6fb88a;
+    --synthesis: #b39ddb;
+    --font-display: "Fraunces", serif;
+    --font-body: "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 24px 80px;
+  }
+
+  header {
+    margin-bottom: 40px;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 34px;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .sub {
+    color: var(--text-dim);
+    font-size: 15px;
+    max-width: 540px;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 120px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    padding: 16px;
+    resize: vertical;
+    transition: border-color 0.15s ease;
+  }
+
+  textarea:focus {
+    outline: none;
+    border-color: var(--text-dim);
+  }
+
+  textarea::placeholder { color: #5e6470; }
+
+  .actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 14px;
+  }
+
+  button {
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 11px 22px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .hint {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  #status {
+    margin-top: 18px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    display: none;
+  }
+
+  #status.visible { display: block; }
+
+  #error {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: #3a2228;
+    border: 1px solid #5c2e36;
+    color: #e8a9ad;
+    font-size: 14px;
+    display: none;
+  }
+
+  #error.visible { display: block; }
+
+  #result { margin-top: 40px; display: none; }
+  #result.visible { display: block; }
+
+  /* Verdict card */
+  .verdict {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 28px;
+  }
+
+  .verdict-top {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 20px;
+  }
+
+  .score {
+    font-family: var(--font-display);
+    font-size: 64px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--synthesis);
+  }
+
+  .score-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .rec {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 100px;
+    border: 1px solid currentColor;
+  }
+
+  .rec.proceed { color: var(--advocate); }
+  .rec.pivot { color: var(--technical); }
+  .rec.stop { color: #e08a8a; }
+
+  .verdict-reasoning {
+    font-size: 15px;
+    color: var(--text);
+    margin: 20px 0;
+    line-height: 1.6;
+  }
+
+  .verdict-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 20px;
+  }
+
+  @media (max-width: 560px) {
+    .verdict-grid { grid-template-columns: 1fr; }
+    .score { font-size: 48px; }
+  }
+
+  .verdict-grid h4 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0 0 10px;
+  }
+
+  .verdict-grid ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 14px;
+  }
+
+  .verdict-grid li { margin-bottom: 6px; }
+
+  /* Agent accordion */
+  .agent {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .agent-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 20px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .agent-header:hover { background: var(--bg-card-hover); }
+
+  .agent-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .agent-name {
+    font-weight: 600;
+    font-size: 15px;
+    flex-grow: 1;
+  }
+
+  .agent-stance {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .agent-chevron {
+    color: var(--text-dim);
+    transition: transform 0.2s ease;
+    font-size: 12px;
+  }
+
+  .agent.open .agent-chevron { transform: rotate(90deg); }
+
+  .agent-body {
+    display: none;
+    padding: 0 20px 20px;
+    font-size: 14px;
+  }
+
+  .agent.open .agent-body { display: block; }
+
+  .agent-summary {
+    color: var(--text);
+    margin-bottom: 12px;
+    line-height: 1.6;
+  }
+
+  .agent-body ul {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-dim);
+  }
+
+  .agent-body li { margin-bottom: 6px; }
+
+  .skeptic-dot { background: var(--skeptic); }
+  .technical-dot { background: var(--technical); }
+  .advocate-dot { background: var(--advocate); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Multi-agent evaluation</div>
+    <h1>Startup Idea Validator</h1>
+    <p class="sub">Describe an idea. Three independent reviewers — a skeptic, an engineer, and an advocate — weigh in, then a synthesis verdict ties it together.</p>
+  </header>
+
+  <textarea id="idea" placeholder="e.g. A notebook to your digital pocket. Open, type, close. Done..."></textarea>
+  <div class="actions">
+    <span class="hint">Takes 10–20 seconds — four agents run in sequence/parallel.</span>
+    <button id="submit">Evaluate</button>
+  </div>
+
+  <div id="status">Running the panel…</div>
+  <div id="error"></div>
+
+  <div id="result">
+    <div class="verdict">
+      <div class="verdict-top">
+        <div>
+          <div class="score-label">Viability</div>
+          <div class="score" id="v-score">–</div>
+        </div>
+        <span class="rec" id="v-rec">–</span>
+      </div>
+      <p class="verdict-reasoning" id="v-reasoning"></p>
+      <div class="verdict-grid">
+        <div>
+          <h4>Top risks</h4>
+          <ul id="v-risks"></ul>
+        </div>
+        <div>
+          <h4>Top strengths</h4>
+          <ul id="v-strengths"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="agent" id="agent-skeptic">
+      <div class="agent-header" onclick="toggleAgent('agent-skeptic')">
+        <span class="agent-dot skeptic-dot"></span>
+        <span class="agent-name">Market Skeptic</span>
+        <span class="agent-stance" id="s-skeptic"></span>
+        <span class="agent-chevron">▸</span>
+      </div>
+      <div class="agent-body">
+        <p class="agent-summary" id="sum-skeptic"></p>
+        <ul id="points-skeptic"></ul>
+      </div>
+    </div>
+
+    <div class="agent" id="agent-technical">
+      <div class="agent-header" onclick="toggleAgent('agent-technical')">
+        <span class="agent-dot technical-dot"></span>
+        <span class="agent-name">Technical Evaluator</span>
+        <span class="agent-stance" id="s-technical"></span>
+        <span class="agent-chevron">▸</span>
+      </div>
+      <div class="agent-body">
+        <p class="agent-summary" id="sum-technical"></p>
+        <ul id="points-technical"></ul>
+      </div>
+    </div>
+
+    <div class="agent" id="agent-advocate">
+      <div class="agent-header" onclick="toggleAgent('agent-advocate')">
+        <span class="agent-dot advocate-dot"></span>
+        <span class="agent-name">Venture Advocate</span>
+        <span class="agent-stance" id="s-advocate"></span>
+        <span class="agent-chevron">▸</span>
+      </div>
+      <div class="agent-body">
+        <p class="agent-summary" id="sum-advocate"></p>
+        <ul id="points-advocate"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_URL = "http://127.0.0.1:8000/evaluate";
+
+  const ideaEl = document.getElementById("idea");
+  const submitBtn = document.getElementById("submit");
+  const statusEl = document.getElementById("status");
+  const errorEl = document.getElementById("error");
+  const resultEl = document.getElementById("result");
+
+  function toggleAgent(id) {
+    document.getElementById(id).classList.toggle("open");
+  }
+
+  function fillList(ulId, items) {
+    const ul = document.getElementById(ulId);
+    ul.innerHTML = "";
+    items.forEach(item => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      ul.appendChild(li);
+    });
+  }
+
+  function fillAgent(key, data) {
+    document.getElementById(`s-${key}`).textContent = data.stance;
+    document.getElementById(`sum-${key}`).textContent = data.summary;
+    fillList(`points-${key}`, data.key_points);
+  }
+
+  async function runEvaluation() {
+    const idea = ideaEl.value.trim();
+    if (!idea) {
+      ideaEl.focus();
+      return;
+    }
+
+    submitBtn.disabled = true;
+    errorEl.classList.remove("visible");
+    resultEl.classList.remove("visible");
+    statusEl.classList.add("visible");
+
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea })
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `Request failed (${response.status})`);
+      }
+
+      const data = await response.json();
+
+      document.getElementById("v-score").textContent = data.synthesis.viability_score;
+      const recEl = document.getElementById("v-rec");
+      recEl.textContent = data.synthesis.recommendation;
+      recEl.className = "rec " + data.synthesis.recommendation;
+      document.getElementById("v-reasoning").textContent = data.synthesis.reasoning;
+      fillList("v-risks", data.synthesis.top_risks);
+      fillList("v-strengths", data.synthesis.top_strengths);
+
+      fillAgent("skeptic", data.market_skeptic);
+      fillAgent("technical", data.technical_evaluator);
+      fillAgent("advocate", data.venture_advocate);
+
+      // collapse all accordions on a fresh result, expand none by default
+      document.querySelectorAll(".agent").forEach(el => el.classList.remove("open"));
+
+      resultEl.classList.add("visible");
+    } catch (err) {
+      errorEl.textContent = err.message.includes("fetch")
+        ? "Couldn't reach the API. Is it running at " + API_URL + "?"
+        : err.message;
+      errorEl.classList.add("visible");
+    } finally {
+      submitBtn.disabled = false;
+      statusEl.classList.remove("visible");
+    }
+  }
+
+  submitBtn.addEventListener("click", runEvaluation);
+  ideaEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runEvaluation();
+  });
+</script>
+</body>
+</html>
