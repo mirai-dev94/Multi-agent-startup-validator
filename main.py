@@ -1,30 +1,49 @@
 """
-Startup Idea Validator — v1
+Startup Idea Validator — v1.1
 
-Pipeline:
-  1. Three evaluator agents (Market Skeptic, Technical Evaluator, Venture
-     Advocate) run concurrently against the idea text, independently.
-  2. The Synthesis Agent receives the idea + all three evaluations and
-     produces a final structured verdict.
+Pipeline (4 Gemini calls total per evaluation, run one after another):
+  1. Market Skeptic and Technical Evaluator each run a single structured
+     call (no search) — competitors and build-vs-buy notes are drawn from
+     the model's own training knowledge, not live lookup. 1 call each.
+     Search-grounded versions exist (_call_agent_grounded,
+     MARKET_SKEPTIC_RESEARCH_PROMPT, TECHNICAL_EVALUATOR_RESEARCH_PROMPT,
+     TECHNICAL_EVALUATOR_TRIAGE_PROMPT) but are currently unused — reverted
+     to stay within Gemini's free-tier daily quota (20 requests/day on
+     this project) while iterating on prompts/output quality. Revisit if
+     moving to a paid tier or once development has slowed down.
+  2. Venture Advocate runs a single structured call, no search. 1 call.
+  3. The Synthesis Agent receives the idea + all three evaluations and
+     produces a final structured verdict. 1 call.
 
-No persistence, no frontend, no multi-turn agent debate — that's deliberately
-out of scope for v1. Single endpoint: POST /evaluate.
+Rate limits: calls are run serially (not via asyncio.gather) and retry
+automatically on transient 503 (model overloaded) errors — see
+_generate_with_retry. At 4 calls/evaluation and a 20/day quota, that's
+5 evaluations/day before hitting RESOURCE_EXHAUSTED; a single 503 retry
+adds 1 call to whichever evaluation hits it.
+
+No persistence, no frontend changes here, no multi-turn agent debate —
+deliberately out of scope. Single endpoint: POST /evaluate.
 """
 
 import asyncio
 import json
 import os
+import random
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
 from prompts import (
     MARKET_SKEPTIC_PROMPT,
+    MARKET_SKEPTIC_RESEARCH_PROMPT,
     SYNTHESIS_PROMPT,
     TECHNICAL_EVALUATOR_PROMPT,
+    TECHNICAL_EVALUATOR_RESEARCH_PROMPT,
+    TECHNICAL_EVALUATOR_TRIAGE_PROMPT,
     VENTURE_ADVOCATE_PROMPT,
 )
 from schemas import AgentEvaluation, IdeaRequest, SynthesisVerdict, ValidationResult
@@ -63,6 +82,30 @@ def _get_client() -> genai.Client:
     return _client
 
 
+async def _generate_with_retry(**kwargs):
+    """Call generate_content, retrying on transient 503 (model overloaded).
+
+    Gemini occasionally returns 503 UNAVAILABLE when the model is under
+    high demand — this is a known, common, temporary condition on Google's
+    side, not a bug in our request. We retry up to 3 times with exponential
+    backoff (1s, 2s, 4s) plus a little jitter, then give up and let the
+    error propagate as before. Any other error (bad request, auth failure,
+    etc.) is not retried — retrying those would just waste time.
+    """
+    client = _get_client()
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            return await client.aio.models.generate_content(**kwargs)
+        except genai_errors.ServerError as e:
+            is_last_attempt = attempt == max_attempts - 1
+            if "503" not in str(e) or is_last_attempt:
+                raise
+            delay = (2 ** attempt) + random.uniform(0, 0.5)
+            print(f"--- Gemini 503 (overloaded), retrying in {delay:.1f}s (attempt {attempt + 1}/{max_attempts}) ---")
+            await asyncio.sleep(delay)
+
+
 def _parse_json_response(raw_text: str) -> dict:
     """Strip markdown code fences if present, then parse JSON.
 
@@ -79,8 +122,7 @@ def _parse_json_response(raw_text: str) -> dict:
 
 
 async def _call_agent(system_prompt: str, user_content: str) -> dict:
-    client = _get_client()
-    response = await client.aio.models.generate_content(
+    response = await _generate_with_retry(
         model=MODEL,
         contents=user_content,
         config=genai_types.GenerateContentConfig(
@@ -96,16 +138,70 @@ async def _call_agent(system_prompt: str, user_content: str) -> dict:
         raise
 
 
-async def evaluate_idea(idea: str) -> ValidationResult:
-    # Step 1: run the three evaluators concurrently
-    skeptic_raw, technical_raw, advocate_raw = await asyncio.gather(
-        _call_agent(MARKET_SKEPTIC_PROMPT, idea),
-        _call_agent(TECHNICAL_EVALUATOR_PROMPT, idea),
-        _call_agent(VENTURE_ADVOCATE_PROMPT, idea),
-    )
+async def _call_agent_grounded(system_prompt: str, user_content: str) -> str:
+    """Call Gemini with web search enabled. Returns plain text, not JSON.
 
-    market_skeptic = AgentEvaluation(**skeptic_raw)
-    technical_evaluator = AgentEvaluation(**technical_raw)
+    Gemini's search-grounded output should not be parsed as structured JSON
+    (per Google's own SDK guidance) — this is a free-text research step,
+    consumed as context by a separate structured call afterward.
+    """
+    response = await _generate_with_retry(
+        model=MODEL,
+        contents=user_content,
+        config=genai_types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=1024,
+            tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+        ),
+    )
+    return response.text
+
+
+async def _call_agent_plain_text(system_prompt: str, user_content: str) -> str:
+    """Call Gemini for a short plain-text answer (no search, no JSON parsing).
+
+    Used for the cheap build-vs-buy triage check.
+    """
+    response = await _generate_with_retry(
+        model=MODEL,
+        contents=user_content,
+        config=genai_types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=10,
+        ),
+    )
+    return response.text.strip()
+
+
+async def _evaluate_market_skeptic(idea: str) -> AgentEvaluation:
+    # Reverted to a single call (no search) to stay within Gemini's
+    # free-tier daily quota (20 requests/day on this project) while
+    # actively iterating on prompts/output quality. Competitors are now
+    # drawn from the model's training knowledge rather than live search —
+    # less current, but enough to keep development moving. The grounded
+    # research path still exists (_call_agent_grounded,
+    # MARKET_SKEPTIC_RESEARCH_PROMPT) if revisited later with more quota.
+    raw = await _call_agent(MARKET_SKEPTIC_PROMPT, idea)
+    return AgentEvaluation(**raw)
+
+
+async def _evaluate_technical(idea: str) -> AgentEvaluation:
+    # Single call, no search — same reasoning as _evaluate_market_skeptic
+    # above (stay within the 20/day free-tier quota during active
+    # development). Build-vs-buy notes come from training knowledge.
+    raw = await _call_agent(TECHNICAL_EVALUATOR_PROMPT, idea)
+    return AgentEvaluation(**raw)
+
+
+async def evaluate_idea(idea: str) -> ValidationResult:
+    # Step 1: run the three evaluators one after another. 4 calls total
+    # for the whole evaluation (Market Skeptic, Technical Evaluator,
+    # Venture Advocate, then Synthesis below) — no search grounding
+    # currently, all from training knowledge. Serialized + retried on
+    # transient 503s; see module docstring for the quota math.
+    market_skeptic = await _evaluate_market_skeptic(idea)
+    technical_evaluator = await _evaluate_technical(idea)
+    advocate_raw = await _call_agent(VENTURE_ADVOCATE_PROMPT, idea)
     venture_advocate = AgentEvaluation(**advocate_raw)
 
     # Step 2: synthesis agent reads the idea + all three evaluations
@@ -135,6 +231,11 @@ async def evaluate(request: IdeaRequest):
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         raise HTTPException(
             status_code=502, detail=f"Agent returned malformed output: {e}"
+        )
+    except genai_errors.ServerError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Gemini is currently overloaded and retries were exhausted. Try again shortly. ({e})",
         )
 
 

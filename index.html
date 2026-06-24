@@ -300,6 +300,47 @@
   .skeptic-dot { background: var(--skeptic); }
   .technical-dot { background: var(--technical); }
   .advocate-dot { background: var(--advocate); }
+
+  .competitors {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .competitors h5, .build-vs-buy h5 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0 0 8px;
+  }
+
+  .competitor-item {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  .competitor-item strong { color: var(--text); }
+  .competitor-item span { color: var(--text-dim); }
+
+  .no-data {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  .build-vs-buy {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .build-vs-buy p {
+    font-size: 14px;
+    color: var(--text);
+    margin: 0;
+  }
 </style>
 </head>
 <body>
@@ -310,7 +351,7 @@
     <p class="sub">Describe an idea. Three independent reviewers — a skeptic, an engineer, and an advocate — weigh in, then a synthesis verdict ties it together.</p>
   </header>
 
-  <textarea id="idea" placeholder="e.g. A notebook to your digital pocket. Open, type, close. Done..."></textarea>
+  <textarea id="idea" placeholder="e.g. A weather-aware mood tracking app that connects seasonal data to mood predictions and AI-generated suggestions..."></textarea>
   <div class="actions">
     <span class="hint">Takes 10–20 seconds — four agents run in sequence/parallel.</span>
     <button id="submit">Evaluate</button>
@@ -351,6 +392,7 @@
       <div class="agent-body">
         <p class="agent-summary" id="sum-skeptic"></p>
         <ul id="points-skeptic"></ul>
+        <div id="extra-skeptic"></div>
       </div>
     </div>
 
@@ -364,6 +406,7 @@
       <div class="agent-body">
         <p class="agent-summary" id="sum-technical"></p>
         <ul id="points-technical"></ul>
+        <div id="extra-technical"></div>
       </div>
     </div>
 
@@ -409,6 +452,33 @@
     document.getElementById(`s-${key}`).textContent = data.stance;
     document.getElementById(`sum-${key}`).textContent = data.summary;
     fillList(`points-${key}`, data.key_points);
+
+    const extraEl = document.getElementById(`extra-${key}`);
+    if (!extraEl) return; // Venture Advocate has no extra slot
+
+    let html = "";
+
+    if (data.existing_solutions && data.existing_solutions.length > 0) {
+      html += '<div class="competitors"><h5>Existing solutions found</h5>';
+      data.existing_solutions.forEach(c => {
+        html += `<div class="competitor-item"><strong>${escapeHtml(c.name)}</strong><br><span>${escapeHtml(c.how_they_solve_it)}</span></div>`;
+      });
+      html += "</div>";
+    } else if (key === "skeptic") {
+      html += '<div class="competitors"><h5>Existing solutions found</h5><p class="no-data">No clear existing competitor found via search.</p></div>';
+    }
+
+    if (data.build_vs_buy) {
+      html += `<div class="build-vs-buy"><h5>Build vs. buy</h5><p>${escapeHtml(data.build_vs_buy)}</p></div>`;
+    }
+
+    extraEl.innerHTML = html;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   async function runEvaluation() {
