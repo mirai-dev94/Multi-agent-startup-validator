@@ -316,14 +316,6 @@
     margin: 0 0 8px;
   }
 
-  .competitor-item {
-    font-size: 14px;
-    margin-bottom: 8px;
-  }
-
-  .competitor-item strong { color: var(--text); }
-  .competitor-item span { color: var(--text-dim); }
-
   .no-data {
     font-size: 13px;
     color: var(--text-dim);
@@ -458,14 +450,10 @@
 
     let html = "";
 
-    if (data.existing_solutions && data.existing_solutions.length > 0) {
-      html += '<div class="competitors"><h5>Existing solutions found</h5>';
-      data.existing_solutions.forEach(c => {
-        html += `<div class="competitor-item"><strong>${escapeHtml(c.name)}</strong><br><span>${escapeHtml(c.how_they_solve_it)}</span></div>`;
-      });
-      html += "</div>";
+    if (data.existing_solutions) {
+      html += `<div class="competitors"><h5>Existing solutions</h5><p>${escapeHtml(data.existing_solutions)}</p></div>`;
     } else if (key === "skeptic") {
-      html += '<div class="competitors"><h5>Existing solutions found</h5><p class="no-data">No clear existing competitor found via search.</p></div>';
+      html += '<div class="competitors"><h5>Existing solutions</h5><p class="no-data">No clear existing competitor identified.</p></div>';
     }
 
     if (data.build_vs_buy) {

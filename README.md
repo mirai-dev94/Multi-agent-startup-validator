@@ -105,16 +105,14 @@ Response shape:
     "summary": "...",
     "key_points": ["..."],
     "stance": "mixed",
-    "existing_solutions": [
-      {"name": "CompetitorX", "how_they_solve_it": "..."}
-    ],
+    "existing_solutions": "Daylio and Reflectly already handle mood tracking; neither connects it to weather.",
     "build_vs_buy": null
   },
   "technical_evaluator": {
     "summary": "...",
     "key_points": ["..."],
     "stance": "positive",
-    "existing_solutions": [],
+    "existing_solutions": null,
     "build_vs_buy": "Buying is clearly easier here, because ..."
   },
   "venture_advocate": { "summary": "...", "key_points": ["..."], "stance": "positive" },
@@ -128,9 +126,9 @@ Response shape:
 }
 ```
 
-`existing_solutions` and `build_vs_buy` are always present but may be empty
-(`[]`) or `null` — that's expected, not an error, when the model doesn't know
-of a relevant competitor/platform or the idea doesn't call for that lens.
+`existing_solutions` and `build_vs_buy` are plain strings, always present but
+may be `null` — that's expected, not an error, when the model doesn't know of
+a relevant competitor/platform or the idea doesn't call for that lens.
 
 ## Tests
 

@@ -174,21 +174,20 @@ async def _call_agent_plain_text(system_prompt: str, user_content: str) -> str:
 
 
 async def _evaluate_market_skeptic(idea: str) -> AgentEvaluation:
-    # Reverted to a single call (no search) to stay within Gemini's
-    # free-tier daily quota (20 requests/day on this project) while
-    # actively iterating on prompts/output quality. Competitors are now
-    # drawn from the model's training knowledge rather than live search —
-    # less current, but enough to keep development moving. The grounded
-    # research path still exists (_call_agent_grounded,
-    # MARKET_SKEPTIC_RESEARCH_PROMPT) if revisited later with more quota.
+    # Single call (no search) to stay within Gemini's free-tier daily
+    # quota (20 requests/day on this project) while actively iterating.
+    # Competitors are drawn from the model's training knowledge rather
+    # than live search — less current, but enough to keep development
+    # moving. The grounded research path still exists
+    # (_call_agent_grounded, MARKET_SKEPTIC_RESEARCH_PROMPT) if revisited
+    # later with more quota.
     raw = await _call_agent(MARKET_SKEPTIC_PROMPT, idea)
     return AgentEvaluation(**raw)
 
 
 async def _evaluate_technical(idea: str) -> AgentEvaluation:
     # Single call, no search — same reasoning as _evaluate_market_skeptic
-    # above (stay within the 20/day free-tier quota during active
-    # development). Build-vs-buy notes come from training knowledge.
+    # above. Build-vs-buy notes come from training knowledge.
     raw = await _call_agent(TECHNICAL_EVALUATOR_PROMPT, idea)
     return AgentEvaluation(**raw)
 

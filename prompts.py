@@ -5,14 +5,17 @@ Each evaluator agent is told to return ONLY JSON matching AgentEvaluation.
 The Synthesis Agent is told to return ONLY JSON matching SynthesisVerdict.
 Keeping the instruction to "return only JSON" explicit and repeated is
 deliberate — it's the cheapest way to keep parsing reliable without adding
-retry/repair logic in v1.
+retry/repair logic.
 
-Market Skeptic and (conditionally) Technical Evaluator run as TWO calls
-instead of one: a free-text research call (with web search enabled, since
-Gemini's search tool output should not be treated as JSON) followed by a
-structured write-up call (no search, plain JSON, same shape as before) that
-is handed the research findings as context. This keeps every JSON-producing
-call free of search-tool quirks while still grounding the final answer.
+existing_solutions and build_vs_buy are plain strings (or null), not
+structured lists/objects — kept deliberately simple after a structured-list
+version caused Pydantic validation failures whenever the model returned a
+plain string instead of an object for one entry.
+
+MARKET_SKEPTIC_RESEARCH_PROMPT, TECHNICAL_EVALUATOR_RESEARCH_PROMPT, and
+TECHNICAL_EVALUATOR_TRIAGE_PROMPT below support an optional web-search-
+grounded research step, but this path is currently unused in main.py (see
+its module docstring) to stay within the free tier's daily request quota.
 """
 
 MARKET_SKEPTIC_RESEARCH_PROMPT = """You are researching existing competitors for a startup/product idea, using
@@ -33,20 +36,21 @@ and why someone would switch from their current solution to adopt this one.
 You are not negative for its own sake — you are rigorous. If demand genuinely looks
 strong, say so.
 
-Use your own knowledge to fill "existing_solutions" with up to 3 real, named
-products or companies that solve this problem or something close to it, each
-with just a name and a one-sentence note on how they solve it. Do not include
-pricing. If you genuinely don't know of any real competitor, leave
-existing_solutions as an empty list rather than inventing one. Note: this list
-reflects your training knowledge, not a live search, so it may be incomplete or
-out of date for newer products.
+Use your own knowledge to fill "existing_solutions" with 1-3 sentences naming real,
+specific products or companies that already solve this problem or something close to
+it, and briefly how each one solves it. Name actual products, not categories (e.g.
+"Daylio handles mood tracking with quick emoji logging" rather than "mood tracking
+apps exist"). Do not include pricing. If you genuinely don't know of any real
+competitor, set existing_solutions to null rather than inventing one. This reflects
+your training knowledge, not a live search, so it may be incomplete or out of date
+for newer products.
 
 Respond with ONLY valid JSON, no preamble, no markdown formatting, matching exactly:
 {
   "summary": "2-3 sentence overall take",
   "key_points": ["point 1", "point 2", "point 3"],
   "stance": "positive" | "mixed" | "negative",
-  "existing_solutions": [{"name": "...", "how_they_solve_it": "..."}],
+  "existing_solutions": "1-3 sentences naming real competitors, or null",
   "build_vs_buy": null
 }
 """
@@ -92,7 +96,7 @@ Respond with ONLY valid JSON, no preamble, no markdown formatting, matching exac
   "summary": "2-3 sentence overall take",
   "key_points": ["point 1", "point 2", "point 3"],
   "stance": "positive" | "mixed" | "negative",
-  "existing_solutions": [],
+  "existing_solutions": null,
   "build_vs_buy": "brief take, or null"
 }
 """
@@ -109,7 +113,7 @@ Respond with ONLY valid JSON, no preamble, no markdown formatting, matching exac
   "summary": "2-3 sentence overall take",
   "key_points": ["point 1", "point 2", "point 3"],
   "stance": "positive" | "mixed" | "negative",
-  "existing_solutions": [],
+  "existing_solutions": null,
   "build_vs_buy": null
 }
 """

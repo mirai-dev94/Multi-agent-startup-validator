@@ -3,28 +3,25 @@ Output schemas for each agent.
 
 Design note: all three evaluator agents (Market Skeptic, Technical Evaluator,
 Venture Advocate) share the same base output shape — a summary, a list of key
-points, and a stance. Market Skeptic and (conditionally) Technical Evaluator
-also fill in two extra optional fields (existing_solutions, build_vs_buy)
-when they have web search grounding available. Venture Advocate and the
-Synthesis Agent never populate these — they default to empty/null. Keeping
-one shared schema (rather than a separate class per agent) means the
-Synthesis Agent can still treat all three evaluations uniformly.
+points, and a stance. Market Skeptic and Technical Evaluator also fill in two
+extra optional plain-text fields (existing_solutions, build_vs_buy). Venture
+Advocate and the Synthesis Agent never populate these — they default to
+empty/null. Both fields are deliberately plain strings, not structured
+objects/lists — an earlier structured-list version (one object per
+competitor) caused Pydantic validation failures whenever the model returned
+a string instead of an object for one entry, which wasted a scarce
+free-tier evaluation. A plain string has nothing to mismatch.
 """
 
 from pydantic import BaseModel
 from typing import Literal
 
 
-class Competitor(BaseModel):
-    name: str
-    how_they_solve_it: str
-
-
 class AgentEvaluation(BaseModel):
     summary: str
     key_points: list[str]
     stance: Literal["positive", "mixed", "negative"]
-    existing_solutions: list[Competitor] = []
+    existing_solutions: str | None = None
     build_vs_buy: str | None = None
 
 
