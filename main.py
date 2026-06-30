@@ -127,7 +127,7 @@ async def _call_agent(system_prompt: str, user_content: str) -> dict:
         contents=user_content,
         config=genai_types.GenerateContentConfig(
             system_instruction=system_prompt,
-            max_output_tokens=2048,
+            max_output_tokens=4096,
         ),
     )
     raw_text = response.text

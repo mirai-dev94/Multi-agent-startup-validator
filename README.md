@@ -60,6 +60,14 @@ serially rather than concurrently to avoid bursting requests. If you hit a
 `quotaId` field — per-day quotas reset at midnight Pacific Time, regardless
 of which timezone you're testing from.
 
+`max_output_tokens` is set to 4096 per call. Ideas that produce richer
+panel disagreement (longer risk/strength lists, longer Synthesis reasoning)
+can need more tokens than a simpler idea — a too-low limit causes the JSON
+to get cut off mid-string, which fails parsing with a "502 malformed
+output" error. If this happens, check the uvicorn console for a printed
+`RAW AGENT RESPONSE` block (only logged on parse failure) to confirm it's
+truncation before raising the limit further.
+
 ## Search grounding
 
 The code includes a **search-grounded version** of Market Skeptic and
