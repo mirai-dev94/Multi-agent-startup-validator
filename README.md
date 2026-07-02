@@ -25,9 +25,9 @@ build-vs-buy take, respectively — currently drawn from the model's own
 training knowledge, not live search (see "Search grounding" below for why,
 and for the grounded version that exists in the code but isn't active).
 
-## Scope (v1.1)
+## Scope (v2)
 
-This started as a deliberately minimal v1. In scope:
+Started as a minimal v1; v2 adds explicit-save persistence. In scope:
 
 - Single API endpoint (`/evaluate`), plus a static `index.html` frontend
   that calls it directly from the browser (no build step, no server for
@@ -39,13 +39,16 @@ This started as a deliberately minimal v1. In scope:
   build-vs-buy take from training knowledge (no live search currently —
   see "Search grounding")
 - Structured JSON output validated against a fixed schema (Pydantic)
-- No persistence — stateless, one idea in, one verdict out
+- **Persistence:** evaluations saved to local SQLite on explicit Save click
+  — not auto-saved. History panel shows all saves; click any to reload.
+  Full detail stored per save. Saves can be deleted. Database file is
+  gitignored — evaluation history never gets committed to the public repo.
 - Automatic retry with backoff on transient Gemini 503 errors
 
 Explicitly out of scope (possible later iterations):
 
 - Multi-turn agent debate / agents responding to each other
-- Saved evaluation history, batch evaluation, or idea comparison
+- Search/filter/export within history
 - Live web search grounding (built, currently disabled — see below)
 
 ## Rate limits
@@ -161,11 +164,12 @@ Pydantic are built for.
 
 ```
 startup-validator/
-├── main.py            # FastAPI app, orchestration, /evaluate endpoint
+├── main.py            # FastAPI app, orchestration, /evaluate endpoint + history endpoints
+├── database.py        # SQLite persistence layer (save, list, get, delete evaluations)
 ├── schemas.py         # Pydantic models for agent + verdict output
 ├── prompts.py         # System prompts for all agents + research/triage steps
 ├── index.html         # Static frontend (no build step, no server needed)
-├── test_main.py       # Unit tests (parsing + schema validation)
+├── test_main.py       # Unit tests (parsing, schema validation, database layer)
 ├── requirements.txt
 ├── .env.example
 └── .gitignore

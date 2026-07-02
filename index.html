@@ -333,6 +333,127 @@
     color: var(--text);
     margin: 0;
   }
+
+  /* Save button — ghost style so it's clearly secondary to Evaluate */
+  .save-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+
+  .btn-save {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 13px;
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .btn-save:hover { color: var(--text); border-color: var(--text-dim); }
+  .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-save.saved { color: var(--advocate); border-color: var(--advocate); }
+
+  /* History panel */
+  #history {
+    margin-top: 56px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .history-header h2 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .history-empty {
+    font-size: 14px;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .history-item:hover { background: var(--bg-card-hover); }
+
+  .history-score {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--synthesis);
+    min-width: 32px;
+    text-align: center;
+  }
+
+  .history-meta { flex-grow: 1; min-width: 0; }
+
+  .history-snippet {
+    font-size: 14px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .history-date {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+
+  .history-rec {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 100px;
+    border: 1px solid currentColor;
+    flex-shrink: 0;
+  }
+
+  .history-rec.proceed { color: var(--advocate); }
+  .history-rec.pivot   { color: var(--technical); }
+  .history-rec.stop    { color: #e08a8a; }
+
+  .btn-delete {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .btn-delete:hover { color: #e08a8a; }
 </style>
 </head>
 <body>
@@ -415,16 +536,36 @@
       </div>
     </div>
   </div>
+
+  <!-- Save button — only visible after a successful evaluation -->
+  <div class="save-row" id="save-row" style="display:none;">
+    <button class="btn-save" id="save-btn">Save this evaluation</button>
+  </div>
+
+  <!-- History panel -->
+  <div id="history">
+    <div class="history-header">
+      <h2>Saved evaluations</h2>
+    </div>
+    <div id="history-list"></div>
+  </div>
+
 </div>
 
 <script>
-  const API_URL = "http://127.0.0.1:8000/evaluate";
+  const API_URL  = "http://127.0.0.1:8000";
 
-  const ideaEl = document.getElementById("idea");
+  const ideaEl    = document.getElementById("idea");
   const submitBtn = document.getElementById("submit");
-  const statusEl = document.getElementById("status");
-  const errorEl = document.getElementById("error");
-  const resultEl = document.getElementById("result");
+  const statusEl  = document.getElementById("status");
+  const errorEl   = document.getElementById("error");
+  const resultEl  = document.getElementById("result");
+  const saveRow   = document.getElementById("save-row");
+  const saveBtn   = document.getElementById("save-btn");
+  const historyList = document.getElementById("history-list");
+
+  // Holds the last successful evaluation so the Save button can reference it
+  let lastEvaluation = null;
 
   function toggleAgent(id) {
     document.getElementById(id).classList.toggle("open");
@@ -446,21 +587,40 @@
     fillList(`points-${key}`, data.key_points);
 
     const extraEl = document.getElementById(`extra-${key}`);
-    if (!extraEl) return; // Venture Advocate has no extra slot
+    if (!extraEl) return;
 
     let html = "";
-
     if (data.existing_solutions) {
       html += `<div class="competitors"><h5>Existing solutions</h5><p>${escapeHtml(data.existing_solutions)}</p></div>`;
     } else if (key === "skeptic") {
       html += '<div class="competitors"><h5>Existing solutions</h5><p class="no-data">No clear existing competitor identified.</p></div>';
     }
-
     if (data.build_vs_buy) {
       html += `<div class="build-vs-buy"><h5>Build vs. buy</h5><p>${escapeHtml(data.build_vs_buy)}</p></div>`;
     }
-
     extraEl.innerHTML = html;
+  }
+
+  function fillResult(idea, data) {
+    document.getElementById("v-score").textContent = data.synthesis.viability_score;
+    const recEl = document.getElementById("v-rec");
+    recEl.textContent = data.synthesis.recommendation;
+    recEl.className = "rec " + data.synthesis.recommendation;
+    document.getElementById("v-reasoning").textContent = data.synthesis.reasoning;
+    fillList("v-risks", data.synthesis.top_risks);
+    fillList("v-strengths", data.synthesis.top_strengths);
+    fillAgent("skeptic", data.market_skeptic);
+    fillAgent("technical", data.technical_evaluator);
+    fillAgent("advocate", data.venture_advocate);
+    document.querySelectorAll(".agent").forEach(el => el.classList.remove("open"));
+    resultEl.classList.add("visible");
+
+    // Show save button, reset its state
+    lastEvaluation = { idea, data };
+    saveRow.style.display = "flex";
+    saveBtn.textContent = "Save this evaluation";
+    saveBtn.classList.remove("saved");
+    saveBtn.disabled = false;
   }
 
   function escapeHtml(str) {
@@ -469,23 +629,123 @@
     return div.innerHTML;
   }
 
-  async function runEvaluation() {
-    const idea = ideaEl.value.trim();
-    if (!idea) {
-      ideaEl.focus();
+  function formatDate(isoString) {
+    const d = new Date(isoString);
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+      + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  // ---- History ----
+
+  async function loadHistory() {
+    try {
+      const res = await fetch(`${API_URL}/history`);
+      const data = await res.json();
+      renderHistory(data.evaluations || []);
+    } catch {
+      historyList.innerHTML = '<p class="history-empty">Could not load history — is the server running?</p>';
+    }
+  }
+
+  function renderHistory(evaluations) {
+    if (evaluations.length === 0) {
+      historyList.innerHTML = '<p class="history-empty">No saved evaluations yet. Run an evaluation and click Save.</p>';
       return;
     }
+    historyList.innerHTML = "";
+    evaluations.forEach(ev => {
+      const item = document.createElement("div");
+      item.className = "history-item";
+      item.innerHTML = `
+        <div class="history-score">${ev.viability_score ?? "–"}</div>
+        <div class="history-meta">
+          <div class="history-snippet">${escapeHtml(ev.idea_snippet)}</div>
+          <div class="history-date">${formatDate(ev.saved_at)}</div>
+        </div>
+        <span class="history-rec ${ev.recommendation}">${ev.recommendation}</span>
+        <button class="btn-delete" title="Delete" data-id="${ev.id}">✕</button>
+      `;
+      // Click anywhere on the row (except delete) loads the full evaluation
+      item.addEventListener("click", (e) => {
+        if (e.target.classList.contains("btn-delete")) return;
+        loadHistoryItem(ev.id);
+      });
+      // Delete button
+      item.querySelector(".btn-delete").addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await deleteHistoryItem(ev.id);
+      });
+      historyList.appendChild(item);
+    });
+  }
+
+  async function loadHistoryItem(id) {
+    try {
+      const res = await fetch(`${API_URL}/history/${id}`);
+      if (!res.ok) throw new Error("Not found");
+      const saved = await res.json();
+      ideaEl.value = saved.idea;
+      fillResult(saved.idea, saved.result);
+      // Mark as already saved so the save button reflects that
+      saveBtn.textContent = "Saved ✓";
+      saveBtn.classList.add("saved");
+      saveBtn.disabled = true;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      alert("Could not load that evaluation.");
+    }
+  }
+
+  async function deleteHistoryItem(id) {
+    if (!confirm("Delete this saved evaluation?")) return;
+    try {
+      const res = await fetch(`${API_URL}/history/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      await loadHistory();
+    } catch {
+      alert("Could not delete that evaluation.");
+    }
+  }
+
+  // ---- Save ----
+
+  saveBtn.addEventListener("click", async () => {
+    if (!lastEvaluation) return;
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving…";
+    try {
+      const res = await fetch(`${API_URL}/history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea: lastEvaluation.idea, result: lastEvaluation.data }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      saveBtn.textContent = "Saved ✓";
+      saveBtn.classList.add("saved");
+      await loadHistory();
+    } catch {
+      saveBtn.textContent = "Save failed — try again";
+      saveBtn.disabled = false;
+    }
+  });
+
+  // ---- Evaluate ----
+
+  async function runEvaluation() {
+    const idea = ideaEl.value.trim();
+    if (!idea) { ideaEl.focus(); return; }
 
     submitBtn.disabled = true;
     errorEl.classList.remove("visible");
     resultEl.classList.remove("visible");
+    saveRow.style.display = "none";
     statusEl.classList.add("visible");
 
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(`${API_URL}/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea })
+        body: JSON.stringify({ idea }),
       });
 
       if (!response.ok) {
@@ -494,23 +754,7 @@
       }
 
       const data = await response.json();
-
-      document.getElementById("v-score").textContent = data.synthesis.viability_score;
-      const recEl = document.getElementById("v-rec");
-      recEl.textContent = data.synthesis.recommendation;
-      recEl.className = "rec " + data.synthesis.recommendation;
-      document.getElementById("v-reasoning").textContent = data.synthesis.reasoning;
-      fillList("v-risks", data.synthesis.top_risks);
-      fillList("v-strengths", data.synthesis.top_strengths);
-
-      fillAgent("skeptic", data.market_skeptic);
-      fillAgent("technical", data.technical_evaluator);
-      fillAgent("advocate", data.venture_advocate);
-
-      // collapse all accordions on a fresh result, expand none by default
-      document.querySelectorAll(".agent").forEach(el => el.classList.remove("open"));
-
-      resultEl.classList.add("visible");
+      fillResult(idea, data);
     } catch (err) {
       errorEl.textContent = err.message.includes("fetch")
         ? "Couldn't reach the API. Is it running at " + API_URL + "?"
@@ -526,6 +770,9 @@
   ideaEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runEvaluation();
   });
+
+  // Load history on page open
+  loadHistory();
 </script>
 </body>
 </html>

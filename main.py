@@ -1,5 +1,5 @@
 """
-Startup Idea Validator — v1.1
+Startup Idea Validator — v2
 
 Pipeline (4 Gemini calls total per evaluation, run one after another):
   1. Market Skeptic and Technical Evaluator each run a single structured
@@ -15,20 +15,25 @@ Pipeline (4 Gemini calls total per evaluation, run one after another):
   3. The Synthesis Agent receives the idea + all three evaluations and
      produces a final structured verdict. 1 call.
 
+Persistence (v2): evaluations are saved to SQLite only when the user
+explicitly clicks Save in the frontend (POST /history). Full evaluation
+detail is stored. History is retrievable via GET /history and
+GET /history/{id}. Saved evaluations can be deleted via DELETE /history/{id}.
+The .db file is gitignored — personal evaluation history never gets
+committed to the public repo.
+
 Rate limits: calls are run serially (not via asyncio.gather) and retry
 automatically on transient 503 (model overloaded) errors — see
 _generate_with_retry. At 4 calls/evaluation and a 20/day quota, that's
 5 evaluations/day before hitting RESOURCE_EXHAUSTED; a single 503 retry
 adds 1 call to whichever evaluation hits it.
-
-No persistence, no frontend changes here, no multi-turn agent debate —
-deliberately out of scope. Single endpoint: POST /evaluate.
 """
 
 import asyncio
 import json
 import os
 import random
+from functools import partial
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -37,6 +42,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
+import database
 from prompts import (
     MARKET_SKEPTIC_PROMPT,
     MARKET_SKEPTIC_RESEARCH_PROMPT,
@@ -54,16 +60,19 @@ MODEL = "gemini-2.5-flash"
 
 app = FastAPI(title="Startup Idea Validator")
 
-# Allow the static frontend (opened directly from disk as a file:// page, or
-# served from any localhost dev server) to call this API. "*" is fine for a
-# local v1 tool with no auth and no sensitive data; revisit if this is ever
-# deployed publicly.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def on_startup():
+    """Initialise the SQLite database on first run."""
+    database.init_db()
+
 
 _client: genai.Client | None = None
 
@@ -241,3 +250,66 @@ async def evaluate(request: IdeaRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Persistence endpoints (v2)
+# sqlite3 is synchronous; we run each DB call in FastAPI's threadpool via
+# asyncio.get_event_loop().run_in_executor() to avoid blocking the event loop.
+# ---------------------------------------------------------------------------
+
+@app.post("/history", status_code=201)
+async def save_to_history(payload: dict):
+    """Save a completed evaluation to the local SQLite database.
+
+    Expects: {"idea": "...", "result": { ...ValidationResult... }}
+    Called explicitly by the frontend's Save button — not called
+    automatically on every /evaluate.
+    """
+    idea = payload.get("idea", "").strip()
+    result = payload.get("result")
+    if not idea or not result:
+        raise HTTPException(status_code=400, detail="Both 'idea' and 'result' are required.")
+    loop = asyncio.get_event_loop()
+    saved_id = await loop.run_in_executor(
+        None, partial(database.save_evaluation, idea, result)
+    )
+    return {"id": saved_id, "saved": True}
+
+
+@app.get("/history")
+async def get_history():
+    """Return all saved evaluations, most recent first.
+
+    Each item includes: id, idea_snippet, saved_at, viability_score,
+    recommendation. Does not return full agent detail — use
+    GET /history/{id} for that.
+    """
+    loop = asyncio.get_event_loop()
+    items = await loop.run_in_executor(None, database.list_evaluations)
+    return {"evaluations": items}
+
+
+@app.get("/history/{evaluation_id}")
+async def get_history_item(evaluation_id: int):
+    """Return a full saved evaluation by id."""
+    loop = asyncio.get_event_loop()
+    item = await loop.run_in_executor(
+        None, partial(database.get_evaluation, evaluation_id)
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found.")
+    return item
+
+
+@app.delete("/history/{evaluation_id}", status_code=200)
+async def delete_history_item(evaluation_id: int):
+    """Delete a saved evaluation by id."""
+    loop = asyncio.get_event_loop()
+    deleted = await loop.run_in_executor(
+        None, partial(database.delete_evaluation, evaluation_id)
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Evaluation {evaluation_id} not found.")
+    return {"id": evaluation_id, "deleted": True}
+
